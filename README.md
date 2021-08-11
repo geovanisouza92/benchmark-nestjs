@@ -1,73 +1,70 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo_text.svg" width="320" alt="Nest Logo" /></a>
-</p>
+# benchmark-nestjs
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+The objective here was to create a simple comparison between Express and Fastify platform on a [Nestjs](https://nestjs.com/) application.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://coveralls.io/github/nestjs/nest?branch=master" target="_blank"><img src="https://coveralls.io/repos/github/nestjs/nest/badge.svg?branch=master#9" alt="Coverage" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+On the documentation, it's said:
 
-## Description
+> [...] fastify is much faster than Express, achieving almost two times better benchmarks results.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+So I'd like to confirm that findings.
 
-## Installation
+This repository is a standard project with a simple route `GET /` that returns the message `Hello World!`.
 
-```bash
-$ npm install
+## Running the server
+
+To start the Express server we use:
+
+```sh
+nest start
 ```
 
-## Running the app
+To start the Fastify server we use:
 
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+```sh
+nest start --config=nest-cli.fastify.json
 ```
 
-## Test
+That uses [another entrypoint](./src/main.fastify.ts).
 
-```bash
-# unit tests
-$ npm run test
+[Apache benchmark](https://httpd.apache.org/docs/2.4/programs/ab.html) was used to simulate parallel requests and measure de perceived performance of the server with this command:
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+```sh
+ab -k -c 200 -n 20000 http://localhost:3000/
 ```
 
-## Support
+## Profiling with Node
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+To understand the performance of the Node process, I used an additional option on the command line:
 
-## Stay in touch
+```sh
+nest start -e 'node --prof --no-logfile-per-isolate'
+```
 
-- Author - [Kamil Myśliwiec](https://kamilmysliwiec.com)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+for Express and:
 
-## License
+```sh
+nest start --config=nest-cli.fastify.json -e 'node --prof --no-logfile-per-isolate'
+```
 
-Nest is [MIT licensed](LICENSE).
+for Fastify. Each execution created a `v8.log` file that I processed with:
+
+```sh
+node --prof-process v8.log > express/fastify.txt
+```
+
+For more information about this, read [this article](https://nodejs.org/en/docs/guides/simple-profiling/).
+
+## Results
+
+These are the results on a _Intel(R) Core(TM) i7-7500U CPU @ 2.70GHz_:
+
+| Measure (unit)                 | Express |  Fastify |     Δ |
+|--------------------------------|--------:|---------:|------:|
+| Time taken for tests (seconds) |   4.544 |    1.676 |  -63% |
+| Total transferred (bytes)      | 4780000 |  3520000 |  -26% |
+| Requests per second (#/sec)    | 4401.73 | 11935.64 | +171% |
+| Time per request (ms)          |  45.437 |   16.757 |  -63% |
+| Time per request (all) (ms)    |   0.227 |    0.084 |  -63% |
+| Transfer rate (Kbytes/second)  | 1027.36 |  2051.44 |  +99% |
+
+The profiling revealed that Express has some hotspots specially with dynamic functions compilation and RegExp usage (or abuse).
