@@ -1,0 +1,5 @@
+{
+  "collection": "@nestjs/schematics",
+  "entryFile": "main.fastify",
+  "sourceRoot": "src"
+}
